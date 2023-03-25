@@ -1,0 +1,77 @@
+#!/bin/sh /etc/rc.common
+
+# Sets up dnsmasq to take a domains blocklist.
+### To be placed inside /etc/init.d ###
+
+### DEPENDENCIES ###
+### curl; ca-certificates; libustream-mbedtls ###
+
+START=95
+
+PORTS="53 853 5353"
+BLOCKLIST_URL='https://raw.githubusercontent.com/notracking/hosts-blocklists/master/dnsmasq/dnsmasq.blacklist.txt'
+BLOCKLIST_PATH=/tmp/dnsmasq.d/blocklist.dnsmasq
+OWNLIST_PATH=/etc/_personalblocklist/DOMAINS
+
+extconf() {
+	echo -n "[+] Setting up external configuration: "
+
+	uci set dhcp.@dnsmasq[0].serversfile=$BLOCKLIST_PATH
+	uci commit dhcp
+
+	if ! uci get firewall.dns_p53; then
+		for port in $PORTS; do
+			uci set firewall.dns_p${port}=redirect
+			uci set firewall.dns_p${port}.name="Route DNS traffic at port ${port} to dnsmasq"
+			uci set firewall.dns_p${port}.src=lan
+			uci set firewall.dns_p${port}.proto="tcp udp"
+			uci set firewall.dns_p${port}.src_dport=${port}
+			uci set firewall.dns_p${port}.dest_port=${port}
+			uci set firewall.dns_p${port}.target=DNAT
+		done
+		uci commit firewall
+	fi
+
+	echo "[+] Backing up /etc/dnsmasq.conf and adding path to blocklist: "
+	touch /etc/dnsmasq.conf.bak
+	grep -v "conf-file" /etc/dnsmasq.conf > /etc/dnsmasq.conf.bak
+	echo conf-file=$BLOCKLIST_PATH >> /etc/dnsmasq.conf
+
+	echo "[+] Creating a personal block list file: "
+	mkdir -p /etc/_personalblocklist
+	touch $OWNLIST_PATH
+	
+	# Dummy file for custom dnsmasq forks.
+	touch /etc/dnsmasq.d/dummyfile	
+
+	echo -n "OK!"
+	echo
+}
+
+start() {
+	if [ ! -f /etc/dnsmasq.d/dummyfile ]
+	then
+		extconf
+	fi
+
+	echo -n "[+] Removing path to blocklist from Dnsmasq: "
+	cp -f /etc/dnsmasq.conf.bak /etc/dnsmasq.conf
+	/etc/init.d/dnsmasq restart
+	echo "OK!"
+
+	echo -n "[+] Downloading blocklist updates and appending personal blocklist: "
+	curl --silent -o $BLOCKLIST_PATH $BLOCKLIST_URL
+
+	touch /tmp/personalblocklist
+	grep -v '#' $OWNLIST_PATH > /tmp/personalblocklist
+	sed 's+^+address=/+g; s+$+/#+g' /tmp/personalblocklist >> $BLOCKLIST_PATH
+	rm /tmp/personalblocklist
+
+	echo "OK!"
+
+	echo -n "[+] Adding back path to blocklist and restarting Dnsmasq: "
+	echo conf-file=$BLOCKLIST_PATH >> /etc/dnsmasq.conf
+	killall dnsmasq
+	/etc/init.d/dnsmasq restart
+	echo "OK!"
+}
