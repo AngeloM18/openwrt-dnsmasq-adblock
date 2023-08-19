@@ -11,7 +11,7 @@ START=95
 PORTS="53 853 5353"
 BLOCKLIST_URL='https://raw.githubusercontent.com/notracking/hosts-blocklists/master/dnsmasq/dnsmasq.blacklist.txt'
 BLOCKLIST_PATH=/tmp/dnsmasq.d/blocklist.dnsmasq
-OWNLIST_PATH=/etc/_personalblocklist/DOMAINS
+PERSONAL_LIST_PATH=/etc/_personalblocklist/DOMAINS
 
 extconf() {
 	echo -n "[+] Setting up external configuration: "
@@ -39,7 +39,7 @@ extconf() {
 
 	echo "[+] Creating a personal block list file: "
 	mkdir -p /etc/_personalblocklist
-	touch $OWNLIST_PATH
+	touch $PERSONAL_LIST_PATH
 	
 	# Dummy file for custom dnsmasq forks.
 	touch /etc/dnsmasq.d/dummyfile	
@@ -63,7 +63,7 @@ start() {
 	curl --silent -o $BLOCKLIST_PATH $BLOCKLIST_URL
 
 	touch /tmp/personalblocklist
-	grep -v '#' $OWNLIST_PATH > /tmp/personalblocklist
+	grep -v '#' $PERSONAL_LIST_PATH > /tmp/personalblocklist
 	sed 's+^+address=/+g; s+$+/#+g' /tmp/personalblocklist >> $BLOCKLIST_PATH
 	rm /tmp/personalblocklist
 
